@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import time
 
+
 # =========================================================
 # OR-Library parser (jobshop1.txt format)
 # =========================================================
@@ -130,7 +131,7 @@ class SAConfig:
 
 def simulated_annealing(jobs_ops,
                         seed: int = 1,
-                        iters: int = 20000,
+                        iters: int = 30000,
                         T0: float = 10.0,
                         alpha: float = 0.9999,
                         neighborhood: str = "swap",
@@ -186,7 +187,7 @@ def main():
         help="path to OR-Library jobshop1.txt"
     )
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--iters", type=int, default=20000)
+    parser.add_argument("--iters", type=int, default=30000)
     parser.add_argument("--T0", type=float, default=10.0)
     parser.add_argument("--alpha", type=float, default=0.9999)
     parser.add_argument("--neigh", type=str, default="swap", choices=["swap", "insert"])
