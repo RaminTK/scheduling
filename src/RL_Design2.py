@@ -26,6 +26,7 @@ from collections import deque
 
 import sa_only as sa
 import tabu_only as ts
+import time
 
 
 # =========================================================
@@ -448,4 +449,7 @@ def main():
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    elapsed = time.time() - start_time
+    print(f"\nTotal elapsed time: {elapsed:.2f} seconds")
