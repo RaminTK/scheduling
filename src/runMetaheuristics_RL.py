@@ -1,13 +1,10 @@
-#This code integrates all the metaheuristics and the RL agent to solve the problem.
-# It integrates algorithms to iterate over all the scheduling samaples in a dataset with standard format (ex: jobshop1.txt).
-
-
 # ===========================
 # benchmark_all_methods.py
 # ===========================
 """
 Run SA, TS, and RL on all JSSP instances in an OR-Library file
-(e.g., jobshop1.txt), then build a pandas DataFrame with results.
+(e.g., jobshop1.txt), repeat the whole benchmark multiple times,
+save each run separately, and also save the average over all runs.
 
 Expected files in the same folder:
 - sa_only.py
@@ -16,7 +13,7 @@ Expected files in the same folder:
 
 Example:
   python benchmark_all_methods.py --file jobshop1.txt
-  python benchmark_all_methods.py --file jobshop1.txt --out results.csv
+  python benchmark_all_methods.py --file jobshop1.txt --repeats 20
 """
 
 import argparse
@@ -46,8 +43,7 @@ def list_instance_names(filepath: str):
 # =========================================================
 # Run one instance with all 3 methods
 # =========================================================
-def run_one_instance(instance_name, file_path, args):
-    # Load instance once
+def run_one_instance(instance_name, file_path, args, seed):
     jobs_ops, n_jobs, n_machines = sa.load_jssp_instance(file_path, instance_name)
 
     row = {
@@ -62,7 +58,7 @@ def run_one_instance(instance_name, file_path, args):
     t0 = time.perf_counter()
     _, sa_best = sa.simulated_annealing(
         jobs_ops,
-        seed=args.seed,
+        seed=seed,
         iters=args.sa_iters,
         T0=args.sa_T0,
         alpha=args.sa_alpha,
@@ -78,7 +74,7 @@ def run_one_instance(instance_name, file_path, args):
     t0 = time.perf_counter()
     _, ts_best = ts.tabu_search(
         jobs_ops,
-        seed=args.seed,
+        seed=seed,
         iters=args.ts_iters,
         tenure=args.ts_tenure,
         neighborhood=args.ts_neigh,
@@ -94,7 +90,7 @@ def run_one_instance(instance_name, file_path, args):
     t0 = time.perf_counter()
     rl_out = rl.qlearn_run(
         jobs_ops=jobs_ops,
-        seed=args.seed,
+        seed=seed,
         steps=args.rl_steps,
         budget=args.rl_budget,
         sa_T0=args.rl_sa_T0,
@@ -117,6 +113,49 @@ def run_one_instance(instance_name, file_path, args):
 
 
 # =========================================================
+# Run one full benchmark over all instances
+# =========================================================
+def run_one_full_benchmark(args, run_id, seed):
+    instance_names = list_instance_names(args.file)
+
+    print(f"\n========== RUN {run_id + 1} / {args.repeats} ==========")
+    print(f"Found {len(instance_names)} instances in {args.file}")
+    print(f"Using seed = {seed}\n")
+
+    rows = []
+
+    for k, name in enumerate(instance_names, start=1):
+        print(f"[Run {run_id + 1} | {k:>2}/{len(instance_names)}] {name}")
+        try:
+            row = run_one_instance(name, args.file, args, seed)
+            row["run"] = run_id + 1
+            rows.append(row)
+
+            print(
+                f"    SA={row['sa_makespan']} ({row['sa_time']:.2f}s) | "
+                f"TS={row['ts_makespan']} ({row['ts_time']:.2f}s) | "
+                f"RL={row['rl_makespan']} ({row['rl_time']:.2f}s)"
+            )
+        except Exception as e:
+            print(f"    ERROR on {name}: {e}")
+            rows.append({
+                "run": run_id + 1,
+                "instance": name,
+                "n_jobs": None,
+                "n_machines": None,
+                "sa_time": None,
+                "sa_makespan": None,
+                "ts_time": None,
+                "ts_makespan": None,
+                "rl_time": None,
+                "rl_makespan": None,
+            })
+
+    df = pd.DataFrame(rows)
+    return df
+
+
+# =========================================================
 # Main
 # =========================================================
 def main():
@@ -124,7 +163,8 @@ def main():
 
     # file / output
     parser.add_argument("--file", type=str, default="jobshop1.txt")
-    parser.add_argument("--out", type=str, default="benchmark_results.csv")
+    parser.add_argument("--out-prefix", type=str, default="benchmark_results")
+    parser.add_argument("--repeats", type=int, default=20)
 
     # reproducibility
     parser.add_argument("--seed", type=int, default=1)
@@ -168,49 +208,56 @@ def main():
 
     args = parser.parse_args()
 
-    instance_names = list_instance_names(args.file)
-
-    print(f"Found {len(instance_names)} instances in {args.file}")
-    print("Running SA, TS, and RL on all instances...\n")
-
-    rows = []
     total_start = time.perf_counter()
+    all_runs = []
 
-    for k, name in enumerate(instance_names, start=1):
-        print(f"[{k:>2}/{len(instance_names)}] Running instance: {name}")
-        try:
-            row = run_one_instance(name, args.file, args)
-            rows.append(row)
+    # ---------------------------------
+    # Outer loop: repeat whole benchmark
+    # ---------------------------------
+    for run_id in range(args.repeats):
+        # You can either keep the same seed every run,
+        # or vary it to get different stochastic outcomes.
+        run_seed = args.seed #+ run_id
 
-            print(
-                f"    SA={row['sa_makespan']} ({row['sa_time']:.2f}s) | "
-                f"TS={row['ts_makespan']} ({row['ts_time']:.2f}s) | "
-                f"RL={row['rl_makespan']} ({row['rl_time']:.2f}s)"
-            )
-        except Exception as e:
-            print(f"    ERROR on {name}: {e}")
-            rows.append({
-                "instance": name,
-                "n_jobs": None,
-                "n_machines": None,
-                "sa_time": None,
-                "sa_makespan": None,
-                "ts_time": None,
-                "ts_makespan": None,
-                "rl_time": None,
-                "rl_makespan": None,
-            })
+        df_run = run_one_full_benchmark(args, run_id, run_seed)
+        all_runs.append(df_run)
 
-    df = pd.DataFrame(rows)
+        run_csv_name = f"{args.out_prefix}_run_{run_id + 1}.csv"
+        df_run.to_csv(run_csv_name, index=False)
+        print(f"\nSaved run {run_id + 1} results to: {run_csv_name}")
 
-    # Optional: keep instance as the index
-    # df = df.set_index("instance")
+    # ---------------------------------
+    # Combine all runs
+    # ---------------------------------
+    df_all = pd.concat(all_runs, ignore_index=True)
+    all_csv_name = f"{args.out_prefix}_all_runs.csv"
+    df_all.to_csv(all_csv_name, index=False)
+    print(f"\nSaved all runs combined to: {all_csv_name}")
 
-    print("\n=== Final DataFrame ===")
-    print(df)
+    # ---------------------------------
+    # Average over all runs by instance
+    # ---------------------------------
+    df_avg = (
+        df_all
+        .groupby("instance", as_index=False)
+        .agg({
+            "n_jobs": "first",
+            "n_machines": "first",
+            "sa_time": "mean",
+            "sa_makespan": "mean",
+            "ts_time": "mean",
+            "ts_makespan": "mean",
+            "rl_time": "mean",
+            "rl_makespan": "mean",
+        })
+    )
 
-    df.to_csv(args.out, index=False)
-    print(f"\nSaved results to: {args.out}")
+    avg_csv_name = f"{args.out_prefix}_average_over_{args.repeats}_runs.csv"
+    df_avg.to_csv(avg_csv_name, index=False)
+
+    print("\n=== Average over all runs ===")
+    print(df_avg)
+    print(f"\nSaved average results to: {avg_csv_name}")
     print(f"Total elapsed time: {time.perf_counter() - total_start:.2f} seconds")
 
 
