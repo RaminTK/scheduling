@@ -164,10 +164,10 @@ def main():
     # file / output
     parser.add_argument("--file", type=str, default="jobshop1.txt")
     parser.add_argument("--out-prefix", type=str, default="benchmark_results")
-    parser.add_argument("--repeats", type=int, default=20)
+    parser.add_argument("--repeats", type=int, default=5)
 
     # reproducibility
-    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=1000)
 
     # -------------------------
     # SA settings
@@ -217,7 +217,7 @@ def main():
     for run_id in range(args.repeats):
         # You can either keep the same seed every run,
         # or vary it to get different stochastic outcomes.
-        run_seed = args.seed #+ run_id
+        run_seed = args.seed + run_id
 
         df_run = run_one_full_benchmark(args, run_id, run_seed)
         all_runs.append(df_run)
